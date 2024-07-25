@@ -1,0 +1,251 @@
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Library
+#install.packages("readxl")
+#install.packages("tseries")
+#install.packages("lmtest")
+#install.packages("car")
+library(lmtest)
+library(car)
+library(readxl)
+library(kohonen)
+library(dplyr)
+library(cluster)
+library(dendextend)
+library(factoextra)
+library(clValid)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+data <- read_excel("E:/Skripsi/Data 2021.xlsx", sheet = "Sheet 10 Variabel")
+#data <- data1[-223,]
+banjir1 <- data
+class(banjir1)
+```
+
+```{r}
+ads.train <- as.matrix(scale(banjir1[,-1]))
+```
+
+```{r}
+# make stable sampling
+RNGkind(sample.kind = "Rounding")
+# make a SOM grid
+ads.grid <- somgrid(xdim = 10, ydim = 10, topo = "hexagonal")
+#ads.grid <- somgrid(topo = "hexagonal")
+
+# make a SOM model
+set.seed(100)
+ads.model <- som(ads.train, ads.grid, rlen = 800, radius = 2.5, keep.data = TRUE,
+                  dist.fcts = "euclidean")
+# str(ads.model)
+```
+
+```{r}
+library(factoextra)
+set.seed(100)
+metode<-("som")
+cluster<-clValid(ads.train, nClust = 2:10, clMethods = metode,validation = "internal")
+cluster
+summary(cluster)
+```
+
+```{r}
+plot(ads.model, type = "mapping", pchs = 19, shape = "round")
+head(data.frame(ads.train), 5)
+```
+
+```{r}
+#plot(ads.model, type = "code", main = "Codes Plot", palette.name = rainbow)
+plot(ads.model, type = "code", palette.name = rainbow)
+```
+
+```{r}
+plot(ads.model, type = "changes")
+plot(ads.model, type = "dist.neighbours")
+plot(ads.model, type = "counts")
+```
+
+```{r}
+heatmap.som <- function(model){
+  for (i in 1:10) {
+  plot(model, type = "property", property = getCodes(model)[,i], 
+        main = colnames(getCodes(model))[i]) 
+  }
+}
+heatmap.som(ads.model)
+```
+
+```{r}
+#KMEANS
+library(factoextra)
+set.seed(100)
+fviz_nbclust(ads.model$codes[[1]], kmeans, method = "wss")
+```
+
+```{r}
+set.seed(100)
+clust <- kmeans(ads.model$codes[[1]], 7)
+
+#clustering using hierarchial
+#cluster.som <- cutree(hclust(dist(ads.model$codes[[1]])), 4)
+```
+
+```{r}
+#png("Plot_SOM.png", width = 1000, height = 800, res = 150)
+#plot(ads.model, type = "codes", bgcol = rainbow(9)[clust$cluster], main = "Cluster Map")
+plot(ads.model, type = "codes", bgcol = rainbow(9)[clust$cluster])
+add.cluster.boundaries(ads.model, clust$cluster)
+#dev.off()
+
+#clustering using hierarchial
+#plot(ads.model, type = "codes", bgcol = rainbow(9)[cluster.som], main = "Cluster Map")
+#add.cluster.boundaries(ads.model, cluster.som)
+```
+
+```{r}
+ads.cluster <- data.frame(data, cluster = clust$cluster[ads.model$unit.classif])
+tail(ads.cluster, 10)
+
+#clustering using hierarchial
+#ads.cluster <- data.frame(data, cluster = cluster.som[ads.model$unit.classif])
+#tail(ads.cluster, 10)
+```
+
+
+
+```{r}
+# Create a data frame with the scaled data and the cluster assignments
+ads.cluster1 <- data.frame(ads.train, cluster = clust$cluster[ads.model$unit.classif])
+
+# Step 4: Profiling the Clusters
+profilisasi_scaled <- ads.cluster1 %>%
+  group_by(cluster) %>%
+  summarise(across(everything(), mean, na.rm = TRUE))
+
+# Print profilisasi to see the mean values for each cluster
+print(profilisasi_scaled)
+```
+
+```{r}
+ads.cluster2 <- data.frame(data, cluster = clust$cluster[ads.model$unit.classif])
+Profilisasi <-ads.cluster2 %>%
+  mutate(Klaster = clust$cluster[ads.model$unit.classif]) %>%
+  group_by(Klaster) %>%
+ summarise(Mean_Jumlah = mean(Jumlah), Mean_death = mean(Meninggal..Hilang), Mean_Terluka = mean(Terluka), Mean_Menderita = mean(Menderita.mengungsi),Mean_Rumah = mean(Rumah), Mean_Kesehatan = mean(Kesehatan) ,Mean_Peribadatan = mean(Peribadatan) ,Mean_Fasum = mean(Fasum) ,Mean_Pendidikan = mean(Pendidikan), ,Mean_Jembatan = mean(Jembatan))
+
+#clustering using hierarchial
+#Profilisasi <- ads.cluster %>%
+  #mutate(Klaster = cluster.som[ads.model$unit.classif]) %>%
+  #group_by(Klaster) %>%
+  #summarise(Mean_Jumlah = mean(Jumlah), Mean_death = mean(Meninggal..Hilang), Mean_Terluka = mean(Terluka), Mean_Menderita = mean(Menderita.mengungsi),Mean_Rumah = mean(Rumah), Mean_Kesehatan = mean(Kesehatan) ,Mean_Peribadatan = mean(Peribadatan) ,Mean_Fasum = mean(Fasum) ,Mean_Perkantoran = mean(Perkantoran), ,Mean_Jembatan = mean(Jembatan))
+Profilisasi
+```
+
+```{r}
+library(factoextra)
+library(ggplot2)
+
+# Menggabungkan data asli dengan hasil klasterisasi
+ads.cluster3 <- data.frame(ads.train, cluster = clust$cluster[ads.model$unit.classif])
+
+# Memeriksa struktur data untuk memastikan tipe data
+# str(ads.train)
+
+# Memilih hanya kolom numerik (kecuali kolom cluster)
+data_numeric <- ads.cluster3[, sapply(ads.cluster3, is.numeric)]
+data_numeric <- data_numeric[, !names(data_numeric) %in% "cluster"]
+
+# Menghapus baris dengan nilai NA
+data_numeric <- na.omit(data_numeric)
+
+# Melakukan PCA pada data numerik yang sudah bersih
+pca_result <- prcomp(data_numeric, scale. = TRUE)
+
+# Menentukan palet warna
+custom_palette <- c("red4", "blue", "yellow3", "green","black","orange", "gray")
+
+# Menghasilkan biplot dengan visualisasi klaster tanpa garis panah/variabel cluster
+biplot_pca <- fviz_pca_biplot(pca_result, 
+                geom.ind = "point", 
+                col.ind = factor(ads.cluster3$cluster[1:nrow(data_numeric)]), 
+                palette = custom_palette, 
+                addEllipses = TRUE, 
+                label = "var",  # Menampilkan label variabel
+                habillage = factor(ads.cluster3$cluster[1:nrow(data_numeric)])) +
+  labs(title = "Biplot PCA dengan Klaster SOM",
+       x = "Komponen Utama 1",
+       y = "Komponen Utama 2") +
+  theme_minimal()
+
+# Tampilkan biplot
+print(biplot_pca)
+
+# Simpan biplot ke file
+ggsave("Biplot_PCA.png", plot = biplot_pca, width = 10, height = 10)
+```
+
+```{r}
+# Step 1: Load Spatial Data
+library(shiny)
+library(leaflet)
+library(RColorBrewer)
+library(tidyverse)
+library(raster)
+library(sf)
+library(sp)
+library(scales)
+#library(ggsn)
+library(plotly)
+library(dbscan)
+library(spatialreg)
+library(spatial)
+library(mapview)
+library(dplyr)
+library(tidyselect)
+library(tidyr)
+
+Admin2 <- st_read("E:/Skripsi/Syntax/Adm2/idn_admbnda_adm2_bps_20200401.shp")
+glimpse(Admin2)
+
+# Step 2: Remove region code from 'wilayah' variable in ads.cluster
+ads.cluster$wilayahAsli <- sub("^\\d+\\.\\s*", "", ads.cluster$Wilayah)
+
+# Step 3: Ensure all regions are included by performing a left join
+Admin2 <- Admin2 %>%
+  rename(wilayahAsli = ADM2_EN) # Ensure consistent naming
+
+# Perform left join to keep all regions in Admin2 and add cluster information
+Peta <- left_join(Admin2, ads.cluster, by = "wilayahAsli")
+
+# Step 4: Set clusters of NA regions to a special value indicating "no data"
+Peta$cluster[is.na(Peta$cluster)] <- "No Data"
+
+# Step 5: Create a color palette including the color for "No Data"
+#mycol <- c("red4", "yellow", "pink", "orange","red","lightblue", "blue" ,"green") # 'grey' for "No Data"
+mycol <- c("brown", "green", "yellow", "orange","pink","blue", "black" ,"white") # 'grey' for "No Data"
+
+
+# Step 6: Create the plot
+peta_indo <- ggplot() +
+  geom_sf(data = Peta, aes(fill = as.factor(cluster))) +
+  scale_fill_manual(values = mycol) +
+  labs(title = "Cluster Banjir di Indonesia",
+       fill = "Cluster") +
+  theme_bw()
+
+# Step 7: Save the plot
+print(peta_indo)
+ggsave("Peta_indonesia.png", plot = peta_indo, width = 10, height = 10)
+```
